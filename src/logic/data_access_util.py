@@ -26,14 +26,6 @@ class RecordNotFoundError(DatabaseError):
 # =============================================================================
 # 2. Database Connection Management (Context Manager for Transactions)
 # =============================================================================
-
-
-# Note: This context manager is useful if you need to wrap MULTIPLE DAO
-# operations within a single transaction. However, the DataAccess class below
-# manages its own connection for individual operations by default.
-# Using this context manager requires modifying the DAO to accept an optional
-# external connection. For simplicity, the example usage below relies on the
-# DAO's internal connection management.
 class DatabaseConnection:
     """
     Manages SQLite database connections using a context manager.
@@ -105,8 +97,6 @@ class DatabaseConnection:
 # =============================================================================
 # 3. Abstract Data Access Class (Manages its own connection)
 # =============================================================================
-
-
 class DataAccess(ABC):
     """
     Abstract base class for data access objects.
@@ -225,6 +215,191 @@ class DataAccess(ABC):
     def get_all(self) -> List[Dict[str, Any]]:
         """Abstract method to get all records."""
         pass
+
+
+# =============================================================================
+# 4. Utility Classes for Transactional and Dimension Tables
+# =============================================================================
+class TransactionalDataAccess(DataAccess):
+    """
+    Base class for transactional data access objects.  Provides
+    implementations for common operations on transactional tables.
+    """
+
+    def __init__(
+        self,
+        db_path: str,
+        table_name: str,
+        column_definitions: List[str],
+        column_descriptions: Optional[Dict[str, str]] = None,
+    ):
+        """
+        Initializes the TransactionalDataAccess object.
+
+        Args:
+            db_path (str): The path to the SQLite database file.
+            table_name (str): The name of the database table.
+            column_definitions (List[str]): A list of column definitions (e.g., "id INTEGER PRIMARY KEY").
+            column_descriptions (Dict[str, str], optional): A dictionary mapping column names to descriptions.
+                Defaults to None.
+        """
+        super().__init__(db_path)
+        self.table_name = table_name
+        self.column_definitions = column_definitions
+        self.column_descriptions = column_descriptions if column_descriptions else {}
+        self.id_column_name = "id"  # Default, can be overridden if necessary
+
+    def create_table(self) -> None:
+        """Creates the table if it doesn't exist."""
+        columns_str = ", ".join(self.column_definitions)
+        sql = f"""
+            CREATE TABLE IF NOT EXISTS {self.table_name} (
+                {columns_str}
+            );
+        """
+        self._execute_query(sql)
+
+    def insert(self, data: Dict[str, Any]) -> int:
+        """Inserts a new record into the table."""
+        columns = ", ".join(data.keys())
+        placeholders = ", ".join([f":{key}" for key in data.keys()])
+        sql = f"""
+            INSERT INTO {self.table_name} ({columns})
+            VALUES ({placeholders})
+        """
+        try:
+            cursor = self._execute_query(sql, data)
+            if cursor.lastrowid is None:
+                raise DatabaseError("Insertion failed, lastrowid is None")
+            if self._connection:
+                self._connection.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            if self._connection:
+                self._connection.rollback()
+            raise e
+
+    def get_by_id(self, record_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieves a record by its ID."""
+        sql = f"SELECT * FROM {self.table_name} WHERE {self.id_column_name} = ?"
+        cursor = self._execute_query(sql, (record_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def update(self, record_id: int, data: Dict[str, Any]) -> bool:
+        """Updates an existing record."""
+        if not data:
+            raise ValueError("No data provided for update.")
+
+        fields = ", ".join([f"{key} = :{key}" for key in data.keys()])
+        sql = f"UPDATE {self.table_name} SET {fields} WHERE {self.id_column_name} = :id"
+        update_data = data.copy()
+        update_data["id"] = record_id  # Ensure ID is in the data for the query.
+
+        try:
+            cursor = self._execute_query(sql, update_data)
+            updated = cursor.rowcount > 0
+            if self._connection:
+                self._connection.commit()
+            return updated
+        except Exception as e:
+            if self._connection:
+                self._connection.rollback()
+            raise e
+
+    def delete(self, record_id: int) -> bool:
+        """Deletes a record by its ID."""
+        sql = f"DELETE FROM {self.table_name} WHERE {self.id_column_name} = ?"
+        try:
+            cursor = self._execute_query(sql, (record_id,))
+            deleted = cursor.rowcount > 0
+            if self._connection:
+                self._connection.commit()
+            return deleted
+        except Exception as e:
+            if self._connection:
+                self._connection.rollback()
+            raise e
+
+    def get_all(self) -> List[Dict[str, Any]]:
+        """Retrieves all records from the table."""
+        sql = f"SELECT * FROM {self.table_name}"
+        cursor = self._execute_query(sql)
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+class DimensionalDataAccess(DataAccess):
+    """
+    Base class for dimensional data access objects.
+    Implements create_table and get_all.  Insert, update, and delete are
+    disabled by default, as dimension tables are typically read-only.
+    """
+
+    def __init__(
+        self,
+        db_path: str,
+        table_name: str,
+        column_definitions: List[str],
+        column_descriptions: Optional[Dict[str, str]] = None,
+        
+    ):
+        """
+        Initializes the DimensionalDataAccess object.
+
+        Args:
+            db_path (str): The path to the SQLite database file.
+            table_name (str): The name of the database table.
+            column_definitions (List[str]): A list of column definitions.
+            column_descriptions (Dict[str, str], optional): A dictionary mapping column names to descriptions.
+                Defaults to None.
+        """
+        super().__init__(db_path)
+        self.table_name = table_name
+        self.column_definitions = column_definitions
+        self.column_descriptions = column_descriptions if column_descriptions else {}
+
+    def create_table(self) -> None:
+        """Creates the table if it doesn't exist."""
+        columns_str = ", ".join(self.column_definitions)
+        sql = f"""
+            CREATE TABLE IF NOT EXISTS {self.table_name} (
+                {columns_str}
+            );
+        """
+        self._execute_query(sql)
+
+    def insert(self, data: Dict[str, Any]) -> int:
+        """Raises an exception to prevent insertion into a dimension table."""
+        raise NotImplementedError(
+            "Insert operation is not allowed on dimension tables."
+        )
+
+    def get_by_id(self, record_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieves a record by its ID."""
+        sql = f"SELECT * FROM {self.table_name} WHERE {self.id_column_name} = ?"
+        cursor = self._execute_query(sql, (record_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def update(self, record_id: int, data: Dict[str, Any]) -> bool:
+        """Raises an exception to prevent updates to a dimension table."""
+        raise NotImplementedError(
+            "Update operation is not allowed on dimension tables."
+        )
+
+    def delete(self, record_id: int) -> bool:
+        """Raises an exception to prevent deletion from a dimension table."""
+        raise NotImplementedError(
+            "Delete operation is not allowed on dimension tables."
+        )
+
+    def get_all(self) -> List[Dict[str, Any]]:
+        """Retrieves all records from the table."""
+        sql = f"SELECT * FROM {self.table_name}"
+        cursor = self._execute_query(sql)
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
 
 
 # =============================================================================

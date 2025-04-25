@@ -1,20 +1,14 @@
-import sqlite3
 from typing import Optional, List, Dict, Any
 from data_access_util import (
-    DataAccess,
-    DatabaseError,
-    QueryError,
-    RecordNotFoundError,
-    handle_database_operation,  # Needed for example usage
+    TransactionalDataAccess,
+    handle_database_operation,
 )
 
 
-class PatientDataAccess(DataAccess):
+class PatientDataAccess(TransactionalDataAccess):
     """
     Data access class for managing patient data ('patients' table).
-
-    Inherits from DataAccess and implements database operations for patients,
-    managing its own connection and transactions for individual operations.
+    Inherits from TransactionalDataAccess to simplify common operations.
     """
 
     def __init__(self, db_path: str):
@@ -24,213 +18,57 @@ class PatientDataAccess(DataAccess):
         Args:
             db_path (str): The path to the SQLite database file.
         """
-        super().__init__(db_path)
-        self.table_name = "patients"
-
-    def create_table(self) -> None:
-        """Creates the patients table if it doesn't exist."""
-        query = f"""
-            CREATE TABLE IF NOT EXISTS {self.table_name} (
-                patient_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hn TEXT NOT NULL UNIQUE,
-                name TEXT NOT NULL,
-                age INTEGER NOT NULL,
-                sex TEXT NOT NULL,
-                medical_history TEXT
-            )
-        """
-        # _execute_query handles connection and basic errors
-        self._execute_query(query)
-        # Commit DDL changes explicitly for robustness
-        if self._connection:
-            try:
-                self._connection.commit()
-            except sqlite3.Error as e:
-                raise QueryError(
-                    f"Failed to commit after creating table '{self.table_name}': {e}"
-                ) from e
+        table_name = "patients"
+        column_definitions = [
+            "patient_id INTEGER PRIMARY KEY AUTOINCREMENT",
+            "hn TEXT NOT NULL UNIQUE",
+            "name TEXT NOT NULL",
+            "age INTEGER NOT NULL",
+            "sex TEXT NOT NULL",
+            "medical_history TEXT",
+        ]
+        super().__init__(db_path, table_name, column_definitions)
+        self.id_column_name = "patient_id"  # Correctly set the id_column_name
 
     def insert(self, data: Dict[str, Any]) -> int:
-        """
-        Inserts a new patient record into the patients table.
-
-        Args:
-            data (dict): A dictionary containing patient data (hn, name, age, sex, medical_history).
-
-        Returns:
-            int: The ID of the newly inserted patient record (patient_id).
-
-        Raises:
-            ValueError: If required keys are missing in data.
-            QueryError: If the database insertion query fails.
-            DatabaseError: For other database-related errors during insert.
-        """
-        required_keys = {"hn", "name", "age", "sex"}  # medical_history is optional
+        """Inserts a new patient record."""
+        required_keys = {"hn", "name", "age", "sex"}
         if not required_keys.issubset(data.keys()):
             missing = required_keys - data.keys()
-            raise ValueError(f"Missing required keys for patient insert: {missing}")
-
-        # Use named placeholders for clarity with dictionary data
-        query = f"""
-            INSERT INTO {self.table_name} (hn, name, age, sex, medical_history)
-            VALUES (:hn, :name, :age, :sex, :medical_history)
-        """
-        # Ensure optional fields exist in the dictionary or provide defaults
-        params = {
+            raise ValueError(f"Missing keys: {missing}")
+        insert_data = {
             "hn": data["hn"],
             "name": data["name"],
             "age": data["age"],
             "sex": data["sex"],
-            "medical_history": data.get(
-                "medical_history", None
-            ),  # Use .get for optional field
+            "medical_history": data.get("medical_history"),
         }
-
-        try:
-            cursor = self._execute_query(query, params)
-            if cursor.lastrowid is None:
-                # This case might indicate an issue even if no exception was raised
-                raise DatabaseError("Patient insertion failed, lastrowid is None")
-
-            # Commit the change explicitly
-            if self._connection:
-                self._connection.commit()
-            return cursor.lastrowid
-        except (QueryError, DatabaseError) as e:
-            if self._connection:
-                self._connection.rollback()  # Rollback on error
-            raise e  # Re-raise the original DB error
-        except Exception as e:  # Catch unexpected errors
-            if self._connection:
-                self._connection.rollback()
-            # Wrap unexpected errors for consistency
-            raise DatabaseError(f"Unexpected error during patient insert: {e}") from e
+        return super().insert(insert_data)
 
     def get_by_id(self, patient_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Retrieves a patient record by their ID.
-
-        Args:
-            patient_id (int): The ID of the patient (patient_id) to retrieve.
-
-        Returns:
-            Optional[dict]: A dictionary containing the patient's data, or None if not found.
-
-        Raises:
-            QueryError: If the database query fails.
-        """
-        query = f"""
-            SELECT patient_id, hn, name, age, sex, medical_history
-            FROM {self.table_name}
-            WHERE patient_id = ?
-        """
-        cursor = self._execute_query(query, (patient_id,))
-        row = cursor.fetchone()
-        # Convert sqlite3.Row to dict if found, otherwise return None
-        return dict(row) if row else None
+        """Retrieves a patient record by ID."""
+        return super().get_by_id(patient_id)
 
     def update(self, patient_id: int, data: Dict[str, Any]) -> bool:
-        """
-        Updates an existing patient record.
-
-        Args:
-            patient_id (int): The ID of the patient (patient_id) to update.
-            data (dict): Dictionary containing the fields and values to update.
-
-        Returns:
-            bool: True if a row was updated, False otherwise.
-
-        Raises:
-            ValueError: If the data dictionary is empty.
-            RecordNotFoundError: If no patient with the given ID (patient_id) exists.
-            QueryError: If the database update query fails.
-            DatabaseError: For other database-related errors during update.
-        """
+        """Updates an existing patient record."""
         if not data:
-            raise ValueError("No data provided for patient update.")
-
-        # Check if record exists before attempting update for better error context
-        if self.get_by_id(patient_id) is None:
-            raise RecordNotFoundError(
-                f"Cannot update patient. Record with ID (patient_id) {patient_id} not found."
-            )
-
-        # Dynamically build the SET part of the query
-        fields = ", ".join([f"{key} = :{key}" for key in data.keys()])
-        query = f"UPDATE {self.table_name} SET {fields} WHERE patient_id = :patient_id"
-
-        # Combine update data with the record ID for parameter binding
-        update_params = data.copy()
-        update_params["patient_id"] = patient_id
-
-        try:
-            cursor = self._execute_query(query, update_params)
-            updated = cursor.rowcount > 0  # Check if any rows were affected
-
-            # Commit the change explicitly
-            if self._connection:
-                self._connection.commit()
-            return updated
-        except (QueryError, DatabaseError) as e:
-            if self._connection:
-                self._connection.rollback()
-            raise e
-        except Exception as e:
-            if self._connection:
-                self._connection.rollback()
-            raise DatabaseError(f"Unexpected error during patient update: {e}") from e
+            raise ValueError("No update data provided.")
+        update_data = {
+            "name": data.get("name"),
+            "age": data.get("age"),
+            "sex": data.get("sex"),
+            "medical_history": data.get("medical_history"),
+        }
+        update_data = {k: v for k, v in update_data.items() if v is not None}
+        return super().update(patient_id, update_data)
 
     def delete(self, patient_id: int) -> bool:
-        """
-        Deletes a patient record by their ID.
-
-        Args:
-            patient_id (int): The ID of the patient to delete.
-
-        Returns:
-            bool: True if a row was deleted, False otherwise.
-
-        Raises:
-            QueryError: If the database deletion query fails.
-            DatabaseError: For other database-related errors during delete.
-        """
-        # Optional: Add a check using get_by_id first if you want to raise RecordNotFoundError
-        # if self.get_by_id(patient_id) is None:
-        #     raise RecordNotFoundError(f"Cannot delete patient. Record with ID {patient_id} not found.")
-
-        query = f"DELETE FROM {self.table_name} WHERE patient_id = ?"
-        try:
-            cursor = self._execute_query(query, (patient_id,))
-            deleted = cursor.rowcount > 0  # Check if any rows were affected
-
-            # Commit the change explicitly
-            if self._connection:
-                self._connection.commit()
-            return deleted
-        except (QueryError, DatabaseError) as e:
-            if self._connection:
-                self._connection.rollback()
-            raise e
-        except Exception as e:
-            if self._connection:
-                self._connection.rollback()
-            raise DatabaseError(f"Unexpected error during patient delete: {e}") from e
+        """Deletes a patient record by ID."""
+        return super().delete(patient_id)
 
     def get_all(self) -> List[Dict[str, Any]]:
-        """
-        Retrieves all patient records from the patients table.
-
-        Returns:
-            List[dict]: A list of dictionaries representing patient records. Empty list if none found.
-
-        Raises:
-            QueryError: If the database query fails.
-        """
-        query = f"SELECT patient_id, hn, name, age, sex, medical_history FROM {self.table_name} ORDER BY name"
-        cursor = self._execute_query(query)
-        rows = cursor.fetchall()
-        # Convert list of sqlite3.Row to list of dicts
-        return [dict(row) for row in rows]
+        """Retrieves all patient records."""
+        return super().get_all()
 
 
 # =============================================================================
@@ -285,7 +123,6 @@ if __name__ == "__main__":
                 if patient:
                     print(f"   Retrieved patient: {patient}")
                 else:
-                    # Should not happen if insert succeeded and ID is correct
                     print(
                         f"   Patient with ID {patient_id_to_use} not found (unexpected)."
                     )
@@ -299,7 +136,6 @@ if __name__ == "__main__":
                 "age": 46,  # Changed age
                 "medical_history": "Hypertension, controlled",  # Updated history
             }
-            # Note: We don't update 'hn' or 'sex' in this example update
             result = handle_database_operation(
                 lambda: patient_dao.update(patient_id_to_use, updated_data)
             )
@@ -315,7 +151,6 @@ if __name__ == "__main__":
                 else:
                     print(f"   Error verifying update: {verify_result.error}")
             else:
-                # Could be RecordNotFoundError if ID was wrong, or QueryError
                 print(f"   Error updating patient: {result.error}")
 
             # 5. Get all patients (Placed before delete)
@@ -352,10 +187,8 @@ if __name__ == "__main__":
                         "   Successfully confirmed patient is deleted (get_by_id returned None)."
                     )
                 else:
-                    # This shouldn't happen if delete was successful
                     print(f"   WARNING: Deleted patient still found: {deleted_patient}")
             else:
-                # This would indicate an error during the SELECT query itself
                 print(f"   Error trying to get deleted patient: {result.error}")
 
         else:
