@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from data_access_util import (
+from .data_access_util import (
     TransactionalDataAccess,
     handle_database_operation,
 )

@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from data_access_util import (
+from .data_access_util import (
     TransactionalDataAccess,
     handle_database_operation,
 )
@@ -40,6 +40,10 @@ class LabDataAccess(TransactionalDataAccess):
         if not required_keys.issubset(data.keys()):
             missing = required_keys - data.keys()
             raise ValueError(f"Missing required keys for insert: {missing}")
+
+        # Validate 'dtx' value
+        if "dtx" in data and data["dtx"] is not None and data["dtx"] < 0:
+            raise ValueError("'dtx' value cannot be negative.")
 
         insert_data = {
             "patient_id": data["patient_id"],

@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from data_access_util import (
+from .data_access_util import (
     TransactionalDataAccess,
     DimensionalDataAccess,
 )
@@ -101,8 +101,7 @@ class TreatmentDataAccess(TransactionalDataAccess):
         self.id_column_name = "id"
 
     def insert(self, data: Dict[str, Any]) -> int:
-        """Inserts a new treament result record."""
-        
+        """Inserts a new treatment result record."""
         required_keys = {
             "patient_id",
             "logtime",
@@ -115,6 +114,10 @@ class TreatmentDataAccess(TransactionalDataAccess):
         if not required_keys.issubset(data.keys()):
             missing = required_keys - data.keys()
             raise ValueError(f"Missing required keys for insert: {missing}")
+
+        # Validate 'administration_rate' value
+        if "administration_rate" in data and data["administration_rate"] is not None and data["administration_rate"] < 0:
+            raise ValueError("'administration_rate' value cannot be negative.")
 
         insert_data = {
             "patient_id": data["patient_id"],
