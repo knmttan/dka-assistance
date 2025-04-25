@@ -1,5 +1,4 @@
 import logging
-import os
 import datetime
 import pytest
 
@@ -7,6 +6,8 @@ from src.logic.lab_data_access import LabDataAccess
 from src.logic.patient_data_access import PatientDataAccess
 from src.logic.treatment_data_access import (
     TreatmentDataAccess,
+    DimTreatmentDataAccess,
+    DimAdministrationTypeDataAccess,
 )
 
 
@@ -18,9 +19,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture(scope="module")
 def setup_database():
-    db_path = "./src/data/test_dka_data.db"
-    if os.path.exists(db_path):
-        os.remove(db_path)
+    db_path = "./src/data/dka_data.db"
     return db_path
 
 @pytest.fixture(scope="module")
@@ -29,6 +28,8 @@ def daos(setup_database):
     patient_dao = PatientDataAccess(db_path)
     lab_dao = LabDataAccess(db_path)
     treatment_dao = TreatmentDataAccess(db_path)
+    dim_treatment_dao = DimTreatmentDataAccess(db_path)
+    dim_administration_type_dao = DimAdministrationTypeDataAccess(db_path)
 
     # Create tables
     patient_dao.create_table()
@@ -39,14 +40,14 @@ def daos(setup_database):
         "patient_dao": patient_dao,
         "lab_dao": lab_dao,
         "treatment_dao": treatment_dao,
+        "dim_treatment_dao": dim_treatment_dao,
+        "dim_administration_type_dao": dim_administration_type_dao,
     }
 
     # Cleanup
-    for dao in [patient_dao, lab_dao, treatment_dao]:
+    for dao in [patient_dao, lab_dao, treatment_dao, dim_treatment_dao, dim_administration_type_dao]:
         if dao.check_connection():
             dao._close_connection()
-    if os.path.exists(db_path):
-        os.remove(db_path)
 
 # Test patient CRUD operations
 def test_patient_crud_operations(daos):
@@ -311,3 +312,26 @@ def test_treatment_delete_non_existent(daos):
     # Attempt to delete a treatment with an invalid ID
     delete_status = treatment_dao.delete(9999)
     assert not delete_status
+
+# Test cases for dimension tables
+
+def test_dim_treatment_initialization(daos):
+    dim_treatment_dao = daos["dim_treatment_dao"]
+
+    # Verify the dim_treatment table contains the expected data
+    treatments = dim_treatment_dao.get_all()
+    assert len(treatments) == 3
+    assert treatments[0]["treatment_name"] == "Insulin Therapy"
+    assert treatments[1]["treatment_name"] == "Fluid Replacement"
+    assert treatments[2]["treatment_name"] == "Electrolyte Replacement"
+
+def test_dim_administration_type_initialization(daos):
+    dim_administration_type_dao = daos["dim_administration_type_dao"]
+
+    # Verify the dim_administration_type table contains the expected data
+    admin_types = dim_administration_type_dao.get_all()
+    assert len(admin_types) == 4
+    assert admin_types[0]["administration_type_name"] == "IV_1"
+    assert admin_types[1]["administration_type_name"] == "IV_2"
+    assert admin_types[2]["administration_type_name"] == "IV_3"
+    assert admin_types[3]["administration_type_name"] == "IV_4"
