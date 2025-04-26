@@ -4,8 +4,6 @@ import datetime
 from src.logic.patient_data_access import PatientDataAccess
 from src.logic.lab_data_access import LabDataAccess
 from src.logic.input_output_utils import LabResult
-import pandas as pd
-from streamlit_date_picker import date_picker, PickerType
 
 def patient_and_lab_details():
     st.header("Patient and Lab Details")
