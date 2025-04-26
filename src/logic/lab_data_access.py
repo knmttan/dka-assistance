@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from .data_access_util import (
+from src.logic.data_access_util import (
     TransactionalDataAccess,
     handle_database_operation,
 )
@@ -85,6 +85,11 @@ class LabDataAccess(TransactionalDataAccess):
     def get_all(self) -> List[Dict[str, Any]]:
         """Retrieves all lab result records."""
         return super().get_all()
+
+    def get_all_by_patient_id(self, patient_id: int) -> List[Dict[str, Any]]:
+        """Retrieves all lab results for a specific patient by their patient_id."""
+        query = f"SELECT * FROM {self.table_name} WHERE patient_id = ?"
+        return self._execute_query(query, (patient_id,)).fetchall()
 
 
 if __name__ == "__main__":

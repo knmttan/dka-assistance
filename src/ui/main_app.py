@@ -1,13 +1,8 @@
-import sys
+import streamlit as st
 import os
 
-# Add the parent directory of src to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-import streamlit as st
-
 # Ensure paths are relative to the current file's directory
-base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "ui"))
+base_path = os.path.dirname(__file__)
 
 pages = {
     "Patient Management": [

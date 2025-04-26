@@ -3,3 +3,11 @@
 
 # Ignore Python compiled files
 *.pyc
+
+# Ignore SQLite database files
+*.db
+*.db-shm
+*.db-wal
+
+# Ignore pytest cache
+.pytest_cache/
