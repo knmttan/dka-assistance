@@ -29,10 +29,15 @@ class LabDataAccess(TransactionalDataAccess):
             "ph DOUBLE",  # pH level of the blood
             "k DOUBLE",  # Potassium level in the blood (mmol/L || mEq/L)
             "na DOUBLE",  # Sodium level in the blood (mmol/L || mEq/L)
+            "ag DOUBLE",  # Anion gap (mmol/L)
+            "ketone DOUBLE",  # Ketone level (mmol/L)
             "FOREIGN KEY (patient_id) REFERENCES patient(patient_id) ON UPDATE CASCADE ON DELETE CASCADE",
         ]
         super().__init__(db_path, table_name, column_definitions)
         self.id_column_name = "id"
+
+    def create_table(self) -> None:
+        pass
 
     def insert(self, data: Dict[str, Any]) -> int:
         """Inserts a new lab result record."""
@@ -54,6 +59,8 @@ class LabDataAccess(TransactionalDataAccess):
             "ph": data.get("ph"),
             "k": data.get("k"),
             "na": data.get("na"),
+            "ag": data.get("ag"),
+            "ketone": data.get("ketone"),
         }
         return super().insert(insert_data)
 
@@ -74,6 +81,8 @@ class LabDataAccess(TransactionalDataAccess):
             "ph": data.get("ph"),
             "k": data.get("k"),
             "na": data.get("na"),
+            "ag": data.get("ag"),
+            "ketone": data.get("ketone"),
         }
         update_data = {k: v for k, v in update_data.items() if v is not None}
         return super().update(record_id, update_data)
@@ -134,6 +143,8 @@ if __name__ == "__main__":
             "ph": 7.35,
             "k": 4.2,
             "na": 138,
+            "ag": 12.0,
+            "ketone": 1.5,
         }
         result = handle_database_operation(lambda: lab_dao.insert(lab_data))
         if result.is_ok():
@@ -164,6 +175,8 @@ if __name__ == "__main__":
                 "logtime": datetime.datetime(2024, 7, 24, 11, 0, 0),
                 "ph": 7.40,
                 "k": 4.5,
+                "ag": 13.0,
+                "ketone": 1.8,
             }
             result = handle_database_operation(
                 lambda: lab_dao.update(lab_id_to_use, updated_data)

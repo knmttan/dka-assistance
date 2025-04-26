@@ -1,6 +1,9 @@
 import logging
 import datetime
 import pytest
+import subprocess
+import os
+import sqlite3
 
 from src.logic.lab_data_access import LabDataAccess
 from src.logic.patient_data_access import PatientDataAccess
@@ -10,6 +13,22 @@ from src.logic.treatment_data_access import (
     DimAdministrationTypeDataAccess,
 )
 
+
+# Check if the database file exists, disconnect and delete it
+@pytest.fixture(scope="module", autouse=True)
+def cleanup_database():
+    db_path = "./src/data/dka_data.db"
+    if os.path.exists(db_path):
+        try:
+            connection = sqlite3.connect(db_path)
+            connection.close()
+        except Exception as e:
+            print(f"Error disconnecting database: {e}")
+        os.remove(db_path)
+        print(f"Database file {db_path} deleted.")
+    
+    # Ensure database is initialized after cleanup
+    subprocess.run(["python", "./src/initialize_database.py"], check=True)
 
 # Configure logging to capture test output
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -30,11 +49,6 @@ def daos(setup_database):
     treatment_dao = TreatmentDataAccess(db_path)
     dim_treatment_dao = DimTreatmentDataAccess(db_path)
     dim_administration_type_dao = DimAdministrationTypeDataAccess(db_path)
-
-    # Create tables
-    patient_dao.create_table()
-    lab_dao.create_table()
-    treatment_dao.create_table()
 
     yield {
         "patient_dao": patient_dao,
@@ -108,6 +122,8 @@ def test_lab_crud_operations(daos):
         "ph": 7.4,
         "k": 4.5,
         "na": 140,
+        "ag": 12.5,
+        "ketone": 1.2,
     }
     lab_id = lab_dao.insert(lab_data)
     logger.info(f"Inserted lab result with ID: {lab_id}")
@@ -118,9 +134,11 @@ def test_lab_crud_operations(daos):
     logger.info(f"Retrieved lab result: {retrieved_lab}")
     assert retrieved_lab is not None
     assert retrieved_lab["dtx"] == 120
+    assert retrieved_lab["ag"] == 12.5
+    assert retrieved_lab["ketone"] == 1.2
 
     # Update the lab result
-    update_data = {"ph": 7.35, "k": 4.2}
+    update_data = {"ph": 7.35, "k": 4.2, "ag": 13.0, "ketone": 1.5}
     update_status = lab_dao.update(lab_id, update_data)
     logger.info(f"Update status: {update_status}")
     assert update_status
@@ -130,6 +148,8 @@ def test_lab_crud_operations(daos):
     logger.info(f"Updated lab result: {updated_lab}")
     assert updated_lab["ph"] == 7.35
     assert updated_lab["k"] == 4.2
+    assert updated_lab["ag"] == 13.0
+    assert updated_lab["ketone"] == 1.5
 
     # Delete the lab result
     delete_status = lab_dao.delete(lab_id)

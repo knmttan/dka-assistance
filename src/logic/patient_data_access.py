@@ -30,6 +30,9 @@ class PatientDataAccess(TransactionalDataAccess):
         super().__init__(db_path, table_name, column_definitions)
         self.id_column_name = "patient_id"  # Correctly set the id_column_name
 
+    def create_table(self) -> None:
+        pass
+
     def insert(self, data: Dict[str, Any]) -> int:
         """Inserts a new patient record."""
         required_keys = {"hn", "name", "age", "sex"}

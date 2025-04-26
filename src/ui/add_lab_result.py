@@ -11,6 +11,8 @@ def add_lab_result():
     ph = st.number_input("pH Level", step=0.01, value=st.session_state.get("ph", 7.0))
     k = st.number_input("Potassium Level (mmol/L)", step=0.01, value=st.session_state.get("k", 0.0))
     na = st.number_input("Sodium Level (mmol/L)", step=0.01, value=st.session_state.get("na", 0.0))
+    ag = st.number_input("Anion Gap (mmol/L)", step=0.01, value=st.session_state.get("ag", 0.0))
+    ketone = st.number_input("Ketone (mmol/L)", step=0.01, value=st.session_state.get("ketone", 0.0))
 
     # Save inputs to session state
     st.session_state["patient_id"] = patient_id
@@ -21,6 +23,8 @@ def add_lab_result():
     st.session_state["ph"] = ph
     st.session_state["k"] = k
     st.session_state["na"] = na
+    st.session_state["ag"] = ag
+    st.session_state["ketone"] = ketone
 
     if st.button("Add Lab Result"):
         try:
@@ -33,6 +37,8 @@ def add_lab_result():
                 "ph": ph,
                 "k": k,
                 "na": na,
+                "ag": ag,
+                "ketone": ketone,
             }
             db_path = "./src/data/dka_data.db"
             lab_dao = LabDataAccess(db_path)

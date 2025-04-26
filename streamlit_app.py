@@ -1,6 +1,7 @@
 import streamlit as st
-from src.ui.add_patient import patient_and_lab_details, add_patient
+from src.ui.add_patient import add_patient
 from src.ui.add_treatment import suggest_treatment
+from src.ui.add_lab_of_patient import patient_and_lab_details
 
 
 def home():

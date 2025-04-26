@@ -100,6 +100,9 @@ class TreatmentDataAccess(TransactionalDataAccess):
         super().__init__(db_path, table_name, column_definitions)
         self.id_column_name = "id"
 
+    def create_table(self) -> None:
+        pass
+
     def insert(self, data: Dict[str, Any]) -> int:
         """Inserts a new treatment result record."""
         required_keys = {
